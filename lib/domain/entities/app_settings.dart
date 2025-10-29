@@ -7,5 +7,6 @@ class AppSettings extends HiveObject {
   bool dark;
   @HiveField(1)
   String lastExportPath;
-  AppSettings({required this.dark, required this.lastExportPath});
+
+  AppSettings({this.dark = false, this.lastExportPath = ''});
 }

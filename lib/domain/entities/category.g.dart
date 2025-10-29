@@ -1,4 +1,3 @@
-// GENERATED MANUALLY
 part of 'category.dart';
 
 class CategoryAdapter extends TypeAdapter<Category> {

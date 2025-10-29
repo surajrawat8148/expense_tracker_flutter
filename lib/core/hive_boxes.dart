@@ -1,6 +1,7 @@
 class HiveBoxes {
-  static const expenses = 'expenses_box';
-  static const categories = 'categories_box';
-  static const budgets = 'budgets_box';
-  static const settings = 'settings_box';
+  static const settings = 'settings';
+  static const expenses = 'expenses';
+  static const categories = 'categories';
+  static const budgets = 'budgets';
+  static const kv = 'kv';
 }

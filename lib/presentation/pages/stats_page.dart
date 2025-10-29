@@ -8,12 +8,12 @@ class StatsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<ExpenseController>();
+    final c = Get.find<ExpenseController>();
     final now = DateTime.now();
     return Scaffold(
       appBar: AppBar(title: const Text('Stats')),
       body: Obx(() {
-        final data = controller.monthlyByCategory(now);
+        final data = c.monthlyByCategory(now);
         final keys = data.keys.toList();
         if (keys.isEmpty) return const Center(child: Text('No data'));
         final bars = <BarChartGroupData>[];
@@ -25,8 +25,7 @@ class StatsPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              Text(
-                  'This Month: ₹${controller.monthTotal.value.toStringAsFixed(0)}',
+              Text('This Month: ₹${c.monthTotal.value.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               Expanded(

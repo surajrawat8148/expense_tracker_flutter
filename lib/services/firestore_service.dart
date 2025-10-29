@@ -2,28 +2,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class FirestoreService {
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  final _db = FirebaseFirestore.instance;
 
-  String? get uid => _auth.currentUser?.uid;
-
-  Future<void> upsertExpense(Map<String, dynamic> data) async {
-    if (uid == null) throw Exception('User not logged in');
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('expenses')
-        .doc(data['id'])
-        .set(data, SetOptions(merge: true));
+  String get _uid {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) throw StateError('Not logged in');
+    return u.uid;
   }
 
-  Future<List<Map<String, dynamic>>> getAllExpenses() async {
-    if (uid == null) return [];
-    final snap = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('expenses')
-        .get();
-    return snap.docs.map((e) => e.data()).toList();
+  CollectionReference<Map<String, dynamic>> get _expCol =>
+      _db.collection('users').doc(_uid).collection('expenses');
+
+  Future<void> upsertExpense(Map<String, dynamic> e) async {
+    await _expCol.doc(e['id'] as String).set(e, SetOptions(merge: true));
+  }
+
+  Future<List<Map<String, dynamic>>> pullAllExpenses() async {
+    final snap = await _expCol.get();
+    return snap.docs.map((d) => d.data()).toList();
   }
 }

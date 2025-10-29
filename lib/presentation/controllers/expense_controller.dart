@@ -1,24 +1,25 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-
+import 'package:hive/hive.dart';
 import '../../domain/entities/expense.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/entities/budget.dart';
-
 import '../../domain/usecases/add_expense.dart';
 import '../../domain/usecases/list_expenses.dart';
 import '../../domain/usecases/upsert_category.dart';
 import '../../domain/usecases/upsert_budget.dart';
 import '../../domain/usecases/list_categories.dart';
 import '../../domain/usecases/list_budgets.dart';
-
+import '../../core/hive_boxes.dart';
 import '../../services/firestore_service.dart';
 import '../../services/sync_service.dart';
-import '../controllers/auth_controller.dart';
-import '../controllers/connectivity_controller.dart';
+import 'connectivity_controller.dart';
 
-enum AddExpenseResult { local, synced }
+enum AddResult { synced, localOnly }
 
 class ExpenseController extends GetxController {
   final AddExpense addExpenseUc;
@@ -37,7 +38,6 @@ class ExpenseController extends GetxController {
     required this.listBudgetsUc,
   });
 
-  // ==== State (lists) ====
   final expenses = <Expense>[].obs;
   final categories = <Category>[].obs;
   final budgets = <Budget>[].obs;
@@ -47,23 +47,38 @@ class ExpenseController extends GetxController {
   final selectedCategoryId = ''.obs;
   final date = DateTime.now().obs;
 
+  final monthTotal = 0.0.obs;
+
   final query = ''.obs;
   final selectedCategoryFilter = ''.obs;
 
-  List<Expense> get filtered {
-    final q = query.value.trim().toLowerCase();
-    final cat = selectedCategoryFilter.value;
-    return expenses.where((e) {
-      final okQ = q.isEmpty || e.title.toLowerCase().contains(q);
-      final okC = cat.isEmpty || e.categoryId == cat;
-      return okQ && okC;
-    }).toList();
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+
+  @override
+  void onInit() {
+    super.onInit();
+    seedIfEmpty();
+    final net = Get.find<ConnectivityController>();
+    ever<bool>(net.isOnline, (online) async {
+      if (online) {
+        final fs = FirestoreService();
+        final sync = SyncService(fs);
+        try {
+          await sync.sync();
+        } catch (_) {}
+        await refreshAll();
+      }
+    });
   }
 
-  // ==== Summary ====
-  final monthTotal = 0.0.obs;
+  @override
+  void onClose() {
+    _connSub?.cancel();
+    super.onClose();
+  }
 
   Future<void> seedIfEmpty() async {
+    categories.value = await listCategoriesUc();
     if (categories.isEmpty) {
       await upsertCategoryUc(
           Category(id: 'food', name: 'Food', colorValue: 0xFFE57373));
@@ -72,6 +87,7 @@ class ExpenseController extends GetxController {
       await upsertCategoryUc(
           Category(id: 'bills', name: 'Bills', colorValue: 0xFFFFB74D));
     }
+    budgets.value = await listBudgetsUc();
     if (budgets.isEmpty) {
       await upsertBudgetUc(
           Budget(id: 'b_food', categoryId: 'food', monthlyLimit: 12000));
@@ -84,84 +100,34 @@ class ExpenseController extends GetxController {
   }
 
   Future<void> refreshAll() async {
+    final r = await Connectivity().checkConnectivity();
+    if (r.any((e) => e != ConnectivityResult.none)) {
+      final fs = FirestoreService();
+      final sync = SyncService(fs);
+      try {
+        await sync.sync();
+      } catch (_) {}
+    }
     expenses.value = await listExpensesUc();
     categories.value = await listCategoriesUc();
     budgets.value = await listBudgetsUc();
-
-    expenses.sort((a, b) => b.date.compareTo(a.date));
-
-    final auth =
-        Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
-    final cc = Get.isRegistered<ConnectivityController>()
-        ? Get.find<ConnectivityController>()
-        : null;
-    final online = cc?.isOnline.value ?? false;
-
-    if (auth?.user.value != null && online) {
-      try {
-        await SyncService(FirestoreService()).sync();
-        expenses.value = await listExpensesUc();
-
-        expenses.sort((a, b) => b.date.compareTo(a.date));
-      } catch (_) {}
-    }
-
     final now = DateTime.now();
-    final mk = DateFormat('yyyy-MM').format(now);
+    final monthKey = DateFormat('yyyy-MM').format(now);
     monthTotal.value = expenses
-        .where((e) => DateFormat('yyyy-MM').format(e.date) == mk)
+        .where((e) => DateFormat('yyyy-MM').format(e.date) == monthKey)
         .fold(0.0, (p, e) => p + e.amount);
   }
 
-  Future<AddExpenseResult> add(
-      String t, double amt, String catId, DateTime d) async {
-    if (t.trim().isEmpty || amt <= 0) return AddExpenseResult.local;
-
-    final e = Expense(
-      id: const Uuid().v4(),
-      title: t,
-      amount: amt,
-      categoryId: catId,
-      date: d,
-      synced: false,
-      updatedAt: DateTime.now(),
-    );
-
-    // Local-first
-    await addExpenseUc(e);
-    await refreshAll();
-
-    // Try cloud only if online
-    final cc = Get.isRegistered<ConnectivityController>()
-        ? Get.find<ConnectivityController>()
-        : null;
-    final isOnline = cc?.isOnline.value ?? true;
-    if (!isOnline) return AddExpenseResult.local;
-
-    try {
-      await FirestoreService().upsertExpense({
-        'id': e.id,
-        'title': e.title,
-        'amount': e.amount,
-        'categoryId': e.categoryId,
-        'date': e.date,
-        'updatedAt': e.updatedAt,
-      }).timeout(const Duration(seconds: 4),
-          onTimeout: () => throw Exception('timeout'));
-
-      e.synced = true;
-      await e.save();
-      await refreshAll();
-      return AddExpenseResult.synced;
-    } catch (_) {
-      e.synced = false;
-      await e.save();
-      await refreshAll();
-      return AddExpenseResult.local;
-    }
+  List<Expense> get filtered {
+    final q = query.value.toLowerCase();
+    final cat = selectedCategoryFilter.value;
+    return expenses.where((e) {
+      final okQ = q.isEmpty || e.title.toLowerCase().contains(q);
+      final okC = cat.isEmpty || e.categoryId == cat;
+      return okQ && okC;
+    }).toList();
   }
 
-  // For StatsPage
   Map<String, double> monthlyByCategory(DateTime month) {
     final key = DateFormat('yyyy-MM').format(month);
     final data = <String, double>{};
@@ -176,4 +142,90 @@ class ExpenseController extends GetxController {
       categories.firstWhereOrNull((c) => c.id == id);
   Budget? budgetByCategory(String id) =>
       budgets.firstWhereOrNull((b) => b.categoryId == id);
+
+  double _todayTotal(DateTime d) => expenses
+      .where((e) =>
+          e.date.year == d.year &&
+          e.date.month == d.month &&
+          e.date.day == d.day)
+      .fold(0.0, (p, e) => p + e.amount);
+
+  bool _isDuplicate(String t, double a, DateTime d) {
+    final start = d.subtract(const Duration(minutes: 5));
+    final end = d.add(const Duration(minutes: 5));
+    return expenses.any((e) =>
+        e.title.toLowerCase().trim() == t.toLowerCase().trim() &&
+        (e.amount - a).abs() < 0.01 &&
+        e.date.isAfter(start) &&
+        e.date.isBefore(end));
+  }
+
+  Future<bool> _confirmDuplicate() async {
+    final res = await Get.dialog<bool>(AlertDialog(
+      title: const Text('Possible duplicate'),
+      content:
+          const Text('This looks similar to a recent expense. Add anyway?'),
+      actions: [
+        TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text('Cancel')),
+        FilledButton(
+            onPressed: () => Get.back(result: true), child: const Text('Add')),
+      ],
+    ));
+    return res ?? false;
+  }
+
+  Future<AddResult> add(
+      String t, double a, String categoryId, DateTime d) async {
+    if (t.trim().isEmpty || a <= 0) return AddResult.localOnly;
+
+    final kv = Hive.box(HiveBoxes.kv);
+    final limit = (kv.get('dailyLimit') as double?) ?? 0.0;
+    if (limit > 0 && (_todayTotal(d) + a) > limit) {
+      Get.snackbar('Limit exceeded',
+          'Amount crosses your daily limit (₹${limit.toStringAsFixed(0)}).');
+      return AddResult.localOnly;
+    }
+
+    if (_isDuplicate(t, a, d)) {
+      final ok = await _confirmDuplicate();
+      if (!ok) return AddResult.localOnly;
+    }
+
+    final id = const Uuid().v4();
+    final e = Expense(
+      id: id,
+      title: t,
+      amount: a,
+      categoryId: categoryId,
+      date: d,
+      synced: false,
+      updatedAt: DateTime.now(),
+    );
+
+    await addExpenseUc(e);
+    await refreshAll();
+
+    final r = await Connectivity().checkConnectivity();
+    final online = r.any((x) => x != ConnectivityResult.none);
+    if (!online) {
+      Get.snackbar('Offline', 'Stored locally');
+      return AddResult.localOnly;
+    }
+
+    try {
+      final fs = FirestoreService();
+      await fs.upsertExpense(e.toJson());
+      e.synced = true;
+      e.updatedAt = DateTime.now();
+      await e.save();
+      await refreshAll();
+      return AddResult.synced;
+    } catch (_) {
+      e.synced = false;
+      await e.save();
+      return AddResult.localOnly;
+    }
+  }
 }

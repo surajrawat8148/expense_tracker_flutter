@@ -4,14 +4,14 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/hive_boxes.dart';
-import 'domain/entities/app_settings.dart';
 import 'domain/entities/expense.dart';
 import 'domain/entities/category.dart';
 import 'domain/entities/budget.dart';
+import 'domain/entities/app_settings.dart';
 import 'presentation/controllers/auth_controller.dart';
+import 'presentation/controllers/expense_controller.dart';
 import 'presentation/controllers/settings_controller.dart';
 import 'presentation/controllers/connectivity_controller.dart';
-import 'presentation/controllers/expense_controller.dart';
 import 'presentation/app_shell.dart';
 import 'presentation/pages/login_page.dart';
 import 'services/auth_service.dart';
@@ -28,23 +28,26 @@ import 'domain/usecases/list_budgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Hive.initFlutter();
+
   Hive.registerAdapter(ExpenseAdapter());
   Hive.registerAdapter(CategoryAdapter());
   Hive.registerAdapter(BudgetAdapter());
   Hive.registerAdapter(AppSettingsAdapter());
 
-  await Hive.openBox<AppSettings>(HiveBoxes.settings);
   await Hive.openBox<Expense>(HiveBoxes.expenses);
   await Hive.openBox<Category>(HiveBoxes.categories);
   await Hive.openBox<Budget>(HiveBoxes.budgets);
+  await Hive.openBox<AppSettings>(HiveBoxes.settings);
+  await Hive.openBox(HiveBoxes.kv);
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   Get.put(ConnectivityController(), permanent: true);
 
   final auth = Get.put(AuthController(AuthService()), permanent: true);
+  final fs = FirestoreService();
+  SyncService.watchConnection(fs);
 
   final repo = ExpenseRepositoryImpl(ExpenseLocalSource());
   final expenseCtrl = ExpenseController(
@@ -56,24 +59,10 @@ Future<void> main() async {
     listBudgetsUc: ListBudgets(repo),
   );
   Get.put(expenseCtrl, permanent: true);
-  await expenseCtrl.seedIfEmpty();
 
-  final sc = SettingsController();
-  Get.put(sc, permanent: true);
-  await sc.init();
-
-  final fs = FirestoreService();
-  SyncService.watchConnection(fs);
-
-  final cc = Get.find<ConnectivityController>();
-  auth.user.listen((u) async {
-    if (u != null && cc.isOnline.value) {
-      try {
-        await SyncService(fs).sync();
-        await expenseCtrl.refreshAll();
-      } catch (_) {}
-    }
-  });
+  final settingsCtrl = SettingsController();
+  Get.put(settingsCtrl, permanent: true);
+  await settingsCtrl.init();
 
   runApp(const Root());
 }
@@ -84,16 +73,19 @@ class Root extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = Get.find<AuthController>();
     final sc = Get.find<SettingsController>();
-    return Obx(() => GetMaterialApp(
-          debugShowCheckedModeBanner: false,
-          themeMode: sc.dark.value ? ThemeMode.dark : ThemeMode.light,
-          theme: ThemeData(
-              useMaterial3: true, colorSchemeSeed: const Color(0xFF6750A4)),
-          darkTheme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: const Color(0xFF6750A4),
-              brightness: Brightness.dark),
-          home: auth.user.value != null ? const AppShell() : LoginPage(),
-        ));
+    return Obx(() {
+      final loggedIn = auth.user.value != null;
+      return GetMaterialApp(
+        debugShowCheckedModeBanner: false,
+        themeMode: sc.dark.value ? ThemeMode.dark : ThemeMode.light,
+        theme: ThemeData(
+            useMaterial3: true, colorSchemeSeed: const Color(0xFF6750A4)),
+        darkTheme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: const Color(0xFF6750A4),
+            brightness: Brightness.dark),
+        home: loggedIn ? const AppShell() : LoginPage(),
+      );
+    });
   }
 }

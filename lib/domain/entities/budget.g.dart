@@ -1,4 +1,3 @@
-// GENERATED MANUALLY
 part of 'budget.dart';
 
 class BudgetAdapter extends TypeAdapter<Budget> {
