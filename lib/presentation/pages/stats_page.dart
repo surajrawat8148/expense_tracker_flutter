@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../utility/constant.dart';
 import '../controllers/expense_controller.dart';
 
 class StatsPage extends StatelessWidget {
@@ -11,23 +12,24 @@ class StatsPage extends StatelessWidget {
     final c = Get.find<ExpenseController>();
     final now = DateTime.now();
     return Scaffold(
-      appBar: AppBar(title: const Text('Stats')),
+      appBar: AppBar(title: const Text(AppText.statsTitle)),
       body: Obx(() {
         final data = c.monthlyByCategory(now);
         final keys = data.keys.toList();
-        if (keys.isEmpty) return const Center(child: Text('No data'));
+        if (keys.isEmpty) return const Center(child: Text(AppText.noData));
         final bars = <BarChartGroupData>[];
         for (int i = 0; i < keys.length; i++) {
           final v = data[keys[i]] ?? 0;
           bars.add(BarChartGroupData(x: i, barRods: [BarChartRodData(toY: v)]));
         }
         return Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSizes.p16),
           child: Column(
             children: [
-              Text('This Month: ₹${c.monthTotal.value.toStringAsFixed(0)}',
+              Text(
+                  '${AppText.thisMonth}${c.monthTotal.value.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSizes.p16),
               Expanded(
                 child: BarChart(
                   BarChartData(

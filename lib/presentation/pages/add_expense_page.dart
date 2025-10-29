@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../utility/constant.dart';
 import '../controllers/expense_controller.dart';
 
 class AddExpensePage extends StatefulWidget {
@@ -15,21 +16,25 @@ class _AddExpensePageState extends State<AddExpensePage> {
   Widget build(BuildContext context) {
     final c = Get.find<ExpenseController>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Expense')),
+      appBar: AppBar(title: const Text(AppText.addExpenseTitle)),
       body: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSizes.p16),
             child: Column(
               children: [
                 TextField(
-                    onChanged: (v) => c.title.value = v,
-                    decoration: const InputDecoration(labelText: 'Title')),
+                  onChanged: (v) => c.title.value = v,
+                  decoration:
+                      const InputDecoration(labelText: AppText.fieldTitle),
+                ),
                 TextField(
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => c.amount.value = v,
-                    decoration: const InputDecoration(labelText: 'Amount')),
-                const SizedBox(height: 12),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) => c.amount.value = v,
+                  decoration:
+                      const InputDecoration(labelText: AppText.fieldAmount),
+                ),
+                const SizedBox(height: AppSizes.p12),
                 Obx(() {
                   return DropdownButtonFormField<String>(
                     value: c.selectedCategoryId.value.isEmpty
@@ -40,22 +45,25 @@ class _AddExpensePageState extends State<AddExpensePage> {
                             DropdownMenuItem(value: e.id, child: Text(e.name)))
                         .toList(),
                     onChanged: (v) => c.selectedCategoryId.value = v ?? '',
-                    decoration: const InputDecoration(labelText: 'Category'),
+                    decoration:
+                        const InputDecoration(labelText: AppText.fieldCategory),
                   );
                 }),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSizes.p12),
                 Obx(() {
                   return FilledButton(
                     onPressed: () async {
                       final picked = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                          initialDate: c.date.value);
+                        context: context,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                        initialDate: c.date.value,
+                      );
                       if (picked != null) c.date.value = picked;
                     },
                     child: Text(
-                        '${c.date.value.year}-${c.date.value.month.toString().padLeft(2, '0')}-${c.date.value.day.toString().padLeft(2, '0')}'),
+                      '${c.date.value.year}-${c.date.value.month.toString().padLeft(2, '0')}-${c.date.value.day.toString().padLeft(2, '0')}',
+                    ),
                   );
                 }),
                 const Spacer(),
@@ -77,13 +85,14 @@ class _AddExpensePageState extends State<AddExpensePage> {
                             setState(() => _saving = false);
                             Get.back();
                             if (res == AddResult.synced) {
-                              Get.snackbar('Success', 'Synced to Firebase');
-                            } else {
                               Get.snackbar(
-                                  'Stored locally', 'Will sync when online');
+                                  AppText.success, AppText.syncedToFirebase);
+                            } else {
+                              Get.snackbar(AppText.storedLocally,
+                                  AppText.willSyncWhenOnline);
                             }
                           },
-                    child: const Text('Save'),
+                    child: const Text(AppText.save),
                   ),
                 )
               ],

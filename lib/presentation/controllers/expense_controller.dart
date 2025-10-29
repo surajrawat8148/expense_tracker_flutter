@@ -17,6 +17,7 @@ import '../../domain/usecases/list_budgets.dart';
 import '../../core/hive_boxes.dart';
 import '../../services/firestore_service.dart';
 import '../../services/sync_service.dart';
+import '../../utility/constant.dart';
 import 'connectivity_controller.dart';
 
 enum AddResult { synced, localOnly }
@@ -80,21 +81,29 @@ class ExpenseController extends GetxController {
   Future<void> seedIfEmpty() async {
     categories.value = await listCategoriesUc();
     if (categories.isEmpty) {
-      await upsertCategoryUc(
-          Category(id: 'food', name: 'Food', colorValue: 0xFFE57373));
-      await upsertCategoryUc(
-          Category(id: 'travel', name: 'Travel', colorValue: 0xFF64B5F6));
-      await upsertCategoryUc(
-          Category(id: 'bills', name: 'Bills', colorValue: 0xFFFFB74D));
+      await upsertCategoryUc(Category(
+          id: AppIds.catFood,
+          name: 'Food',
+          colorValue: AppColors.catFood.value));
+      await upsertCategoryUc(Category(
+          id: AppIds.catTravel,
+          name: 'Travel',
+          colorValue: AppColors.catTravel.value));
+      await upsertCategoryUc(Category(
+          id: AppIds.catBills,
+          name: 'Bills',
+          colorValue: AppColors.catBills.value));
     }
     budgets.value = await listBudgetsUc();
     if (budgets.isEmpty) {
-      await upsertBudgetUc(
-          Budget(id: 'b_food', categoryId: 'food', monthlyLimit: 12000));
-      await upsertBudgetUc(
-          Budget(id: 'b_travel', categoryId: 'travel', monthlyLimit: 8000));
-      await upsertBudgetUc(
-          Budget(id: 'b_bills', categoryId: 'bills', monthlyLimit: 15000));
+      await upsertBudgetUc(Budget(
+          id: AppIds.bFood, categoryId: AppIds.catFood, monthlyLimit: 12000));
+      await upsertBudgetUc(Budget(
+          id: AppIds.bTravel,
+          categoryId: AppIds.catTravel,
+          monthlyLimit: 8000));
+      await upsertBudgetUc(Budget(
+          id: AppIds.bBills, categoryId: AppIds.catBills, monthlyLimit: 15000));
     }
     await refreshAll();
   }
